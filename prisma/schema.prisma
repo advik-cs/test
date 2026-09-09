@@ -1,0 +1,280 @@
+// Prisma Schema for Disaster Management System
+// Target: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CITIZEN
+  RESCUER
+}
+
+enum MemberCategory {
+  ADULT
+  CHILD
+  ELDERLY
+}
+
+enum DisasterType {
+  FLOOD
+  CYCLONE
+  EARTHQUAKE
+  LANDSLIDE
+  OTHER
+}
+
+enum AlertLevel {
+  GREEN
+  YELLOW
+  ORANGE
+  RED
+}
+
+enum DisasterStatus {
+  PREDICTED
+  ACTIVE
+  ENDED
+  CANCELLED
+}
+
+enum ExpectedLocationType {
+  HOME
+  SHELTER
+  OTHER_CITY
+  UNKNOWN
+}
+
+enum ShelterStatus {
+  AVAILABLE
+  NEAR_CAPACITY
+  FULL
+  OVER_CAPACITY
+  CLOSED
+}
+
+enum FacilityType {
+  HOSPITAL
+  FIRE_STATION
+  POLICE_STATION
+  CHECKPOINT
+}
+
+enum NotificationType {
+  DISASTER_ALERT
+  EXPECTED_LOCATION_REQUEST
+  RECONFIRMATION
+  SHELTER_UPDATE
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+}
+
+model User {
+  id                 String          @id @default(uuid())
+  name               String
+  identityNumberHash String          // Hashed test identity/Aadhaar number (never stored in plaintext)
+  identityLast4      String          // Safe display last-4 digits for demo verification
+  mobileNumber       String          @unique
+  passwordHash       String
+  role               Role            @default(CITIZEN)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  households         Household[]
+  createdDisasters   DisasterEvent[]
+  notifications      Notification[]
+
+  @@index([mobileNumber])
+  @@index([role])
+}
+
+model Location {
+  id           String      @id @default(uuid())
+  buildingName String
+  address      String
+  city         String
+  state        String
+  latitude     Float
+  longitude    Float
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  households   Household[]
+
+  @@index([latitude, longitude])
+  @@index([city])
+}
+
+model Household {
+  id                     String            @id @default(uuid())
+  householdCode          String            @unique
+  createdByUserId        String
+  registeredHomeLocationId String
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+
+  createdByUser          User              @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+  registeredHomeLocation Location          @relation(fields: [registeredHomeLocationId], references: [id])
+  members                HouseholdMember[]
+
+  @@index([createdByUserId])
+  @@index([registeredHomeLocationId])
+}
+
+model HouseholdMember {
+  id                String             @id @default(uuid())
+  householdId       String
+  name              String
+  age               Int
+  relationship      String
+  category          MemberCategory     // ADULT, CHILD, ELDERLY
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  household         Household          @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  expectedLocations ExpectedLocation[]
+
+  @@index([householdId])
+  @@index([category])
+}
+
+model DisasterEvent {
+  id                 String             @id @default(uuid())
+  type               DisasterType
+  title              String
+  description        String
+  alertLevel         AlertLevel         @default(YELLOW)
+  predictedStartTime DateTime
+  predictedEndTime   DateTime
+  status             DisasterStatus     @default(PREDICTED)
+  createdByUserId    String
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  createdByUser      User               @relation(fields: [createdByUserId], references: [id])
+  affectedZones      AffectedZone[]
+  expectedLocations  ExpectedLocation[]
+  notifications      Notification[]
+
+  @@index([status])
+  @@index([alertLevel])
+  @@index([predictedStartTime])
+}
+
+model AffectedZone {
+  id              String        @id @default(uuid())
+  disasterEventId String
+  name            String
+  alertLevel      AlertLevel
+  boundaryJson    String        // GeoJSON polygon coordinates [[lat, lng], ...]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  disasterEvent   DisasterEvent @relation(fields: [disasterEventId], references: [id], onDelete: Cascade)
+
+  @@index([disasterEventId])
+}
+
+model Shelter {
+  id                String             @id @default(uuid())
+  name              String
+  address           String
+  latitude          Float
+  longitude         Float
+  capacity          Int
+  contactNumber     String
+  status            ShelterStatus      @default(AVAILABLE)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  expectedLocations ExpectedLocation[]
+
+  @@index([latitude, longitude])
+  @@index([status])
+}
+
+model ExpectedLocation {
+  id                   String                   @id @default(uuid())
+  disasterEventId      String
+  householdMemberId    String
+  expectedLocationType ExpectedLocationType
+  shelterId            String?
+  otherCity            String?
+  submittedAt          DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+
+  disasterEvent        DisasterEvent            @relation(fields: [disasterEventId], references: [id], onDelete: Cascade)
+  householdMember      HouseholdMember          @relation(fields: [householdMemberId], references: [id], onDelete: Cascade)
+  shelter              Shelter?                 @relation(fields: [shelterId], references: [id])
+  history              ExpectedLocationHistory[]
+
+  @@unique([disasterEventId, householdMemberId])
+  @@index([disasterEventId])
+  @@index([householdMemberId])
+  @@index([shelterId])
+  @@index([expectedLocationType])
+}
+
+model ExpectedLocationHistory {
+  id                 String               @id @default(uuid())
+  expectedLocationId String
+  previousType       ExpectedLocationType
+  newType            ExpectedLocationType
+  shelterId          String?
+  otherCity          String?
+  reason             String?              // e.g., "30h reconfirmation: change location"
+  changedAt          DateTime             @default(now())
+
+  expectedLocation   ExpectedLocation     @relation(fields: [expectedLocationId], references: [id], onDelete: Cascade)
+
+  @@index([expectedLocationId])
+}
+
+model EmergencyFacility {
+  id            String       @id @default(uuid())
+  name          String
+  type          FacilityType
+  address       String
+  latitude      Float
+  longitude     Float
+  contactNumber String
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([type])
+  @@index([latitude, longitude])
+}
+
+model Road {
+  id              String   @id @default(uuid())
+  name            String
+  roadType        String   // e.g., "PRIMARY", "SECONDARY", "EMERGENCY_ROUTE"
+  coordinatesJson String   // Array of [lat, lng] points representing road polyline
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Notification {
+  id              String             @id @default(uuid())
+  userId          String
+  disasterEventId String?
+  type            NotificationType
+  message         String
+  status          NotificationStatus @default(UNREAD)
+  createdAt       DateTime           @default(now())
+  readAt          DateTime?
+
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  disasterEvent   DisasterEvent?     @relation(fields: [disasterEventId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+}

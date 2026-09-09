@@ -1,0 +1,6 @@
+{
+  "name": "Disaster Management API",
+  "description": "Backend architecture and REST API for disaster management, registered home location and GPS coordinate management, household registration, and decoupled disaster evacuation planning.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

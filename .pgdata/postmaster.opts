@@ -1,0 +1,1 @@
+/app/applet/node_modules/@embedded-postgres/linux-x64/native/bin/postgres "-D" "/app/applet/.pgdata" "-p" "5432"
